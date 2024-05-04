@@ -1,0 +1,41 @@
+# .yaml config file for storing metadata
+# needed to run the scripts
+
+# Define the directories
+## directories where to store outputs
+output_dir: "../outputs_cov"
+
+# Metadata related to simulations
+## General parameters
+nside: 256
+nsims: 2
+
+# if personalized binning scheme, indicate path here
+# otherwise a linear binning will be used
+# .txt file with bandpowers edges
+bpw_edges: 
+
+## instrument model
+freqs: [23, 93, 145, 353]
+
+## sky model
+plaw_ell_pivot: 80
+# CMB
+cmb_cls_path: "../data/Cls_Planck2018_r0.fits"
+# synchrotron
+A_synch_TT: 
+A_synch_EE: 
+A_synch_BB: 
+alpha_synch_TT: 
+alpha_synch_EE: 
+alpha_synch_BB: 
+beta_synch: -3.
+# dust
+A_dust_TT: 
+A_dust_EE: 
+A_dust_BB: 
+alpha_dust_TT: 
+alpha_dust_EE: 
+alpha_dust_BB: 
+beta_dust: 1.59
+T_dust: 19.6

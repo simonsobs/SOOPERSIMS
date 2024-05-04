@@ -1,0 +1,16 @@
+# .yaml config file for storing metadata
+# needed to run the scripts
+
+# Define the directories
+## directories where to store outputs
+output_dir: "../outputs_tf"
+
+# Metadata related to simulations
+## General parameters
+nside: 512
+nsims: 2
+
+## Power law parameters
+plaw_ell_pivot: 80
+plaw_amp: 1.0
+plaw_index: -2.0
