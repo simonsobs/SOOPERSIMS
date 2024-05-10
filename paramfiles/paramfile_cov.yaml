@@ -7,7 +7,7 @@ output_dir: "../outputs_cov"
 
 # Metadata related to simulations
 ## General parameters
-nside: 256
+nside: 512
 nsims: 2
 
 # if personalized binning scheme, indicate path here
@@ -17,6 +17,8 @@ bpw_edges:
 
 ## instrument model
 freqs: [23, 93, 145, 353]
+# bandpass integration? If False, delta bandpasses
+bpass_integration: False
 
 ## sky model
 plaw_ell_pivot: 80
