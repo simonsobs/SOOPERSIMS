@@ -3,6 +3,7 @@ import argparse
 import os
 import numpy as np
 import healpy as hp
+from datetime import date
 
 
 def tf_sims(args):
@@ -28,6 +29,7 @@ def tf_sims(args):
 
     out_dir = config['output_dir']
     plots_dir = out_dir + "/plots"
+    config['date'] = date.today()
 
     dirs = [out_dir, plots_dir]
     for d in dirs:
