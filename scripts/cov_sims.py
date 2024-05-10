@@ -3,6 +3,7 @@ import argparse
 import os
 import numpy as np
 import healpy as hp
+from datetime import date
 
 
 def fcmb(nu):
@@ -22,7 +23,8 @@ def fcmb(nu):
 
 def comp_sed(nu, nu0, beta, temp, typ):
     """
-    SED of the components, returns thermodynamic (CMB) units.
+    Takes as input an amplitude in CMB units,
+    return the amplitude extrapolated at frequency nu, in RJ units.
     -----------------
     input:
         nu: frequency to scale to
@@ -30,7 +32,7 @@ def comp_sed(nu, nu0, beta, temp, typ):
         beta: SED power law index (e.g., beta_synch or beta_dust)
         typ: name of the component, can be 'cmb', 'dust' or 'synch'
     output:
-        SED scaling factor, in thermodynamic (CMB) units
+        frequency scaling factor
     """
     if typ == 'cmb':
         return fcmb(nu)
@@ -39,20 +41,10 @@ def comp_sed(nu, nu0, beta, temp, typ):
         x_from = 0.04799244662211351 * nu0 / temp
         ex_to = np.exp(x_to)
         ex_from = np.exp(x_from)
-        return (nu/nu0)**(1+beta) * (ex_from-1)/(ex_to-1) * fcmb(nu0)/fcmb(nu)
+        return (nu/nu0)**(1+beta) * (ex_from-1)/(ex_to-1) * fcmb(nu0)
     elif typ == 'synch':
-        return (nu/nu0)**beta * fcmb(nu0) / fcmb(nu)
+        return (nu/nu0)**beta * fcmb(nu0)
     return None
-
-
-# def convolve_sed(nu_arr, bnu, sed):
-#     """
-#     """
-#     dnu = np.zeros_like(nu_arr)
-#     dnu[1:] = np.diff(nu_arr)
-#     dnu[0] = dnu[1]
-#     conv_sed = np.sum(dnu * bnu * nu_arr**2 * sed)
-#     return conv_sed
 
 
 def cov_sims(args):
@@ -74,6 +66,7 @@ def cov_sims(args):
 
     out_dir = config['output_dir']
     plots_dir = out_dir + "/plots"
+    config['date'] = date.today()
 
     # create directories
     dirs = [out_dir, plots_dir]
@@ -147,6 +140,8 @@ def cov_sims(args):
                  for nu in freqs}
     sed_dust = {nu: comp_sed(nu, nu0_dust, beta_dust, T_dust, 'dust')
                 for nu in freqs}
+    sed_cmb = {nu: comp_sed(nu, None, None, None, 'cmb')
+               for nu in freqs}
 
     # Generate alm drawing Gaussian random numbers from power spectra
     print("-------------------")
@@ -169,14 +164,19 @@ def cov_sims(args):
             print(f"  {nu:03d} GHz")
             fname_out = f"{sims_dir}/alm_{nu:03d}GHz_lmax{lmax}_{seed:04d}.fits"  # noqa
 
-            # TODO: bandpass integration (?)
-            # bp_freqs, bp = bpass[nu]
-            # conv_sed_synch = convolve_sed(bp_freqs, bp, sed_synch[nu])
-            # conv_sed_dust = convolve_sed(bp_freqs, bp, sed_dust[nu])
-
             # rescale for component SEDs and coadd
-            alm = alm_synch*sed_synch[nu] + alm_dust*sed_dust[nu] + alm_cmb
-            # write to disk
+            alm = (alm_synch*sed_synch[nu] +
+                   alm_dust*sed_dust[nu] +
+                   alm_cmb*sed_cmb[nu])
+
+            if config['bpass_integration']:
+                print("bandpass integration not implemented yet")
+                alm /= fcmb(nu)
+            else:
+                # back to CMB units
+                alm /= fcmb(nu)
+
+            # write alm to disk
             hp.write_alm(fname_out, alm, overwrite=True, out_dtype=np.float64)
 
     if args.plots:
@@ -184,6 +184,8 @@ def cov_sims(args):
         from matplotlib import cm
         print("-------------------")
         print("plotting...")
+        xlabel = r'multipole $\ell$'
+        ylabel = r'$C_\ell \, [\mu K^2]$'
 
         print("-------------------")
         print("plotting input C_ells")
@@ -193,8 +195,8 @@ def cov_sims(args):
         for i, cl in enumerate(cl_cmb):
             plt.plot(cl, c=colors[i], label=hp_order[i])
         plt.loglog()
-        plt.xlabel(r'multipole $\ell$')
-        plt.ylabel(r'$C_\ell \, [\mu K^2]$')
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
         plt.title('CMB')
         plt.legend(frameon=False, ncols=2)
         plt.savefig(f"{plots_dir}/cl_cmb.png", bbox_inches='tight')
@@ -206,8 +208,8 @@ def cov_sims(args):
         plt.axvline(ell_0, c='c', ls=':',
                     alpha=0.5, label=fr'$\ell={ell_0:d}$')
         plt.loglog()
-        plt.xlabel(r'multipole $\ell$')
-        plt.ylabel(r'$C_\ell \, [\mu K^2]$')
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
         plt.title('synchrotron')
         plt.legend(frameon=False)
         plt.savefig(f"{plots_dir}/cl_synch.png", bbox_inches='tight')
@@ -219,22 +221,11 @@ def cov_sims(args):
         plt.axvline(ell_0, c='c', ls=':',
                     alpha=0.5, label=fr'$\ell={ell_0:d}$')
         plt.loglog()
-        plt.xlabel(r'multipole $\ell$')
-        plt.ylabel(r'$C_\ell \, [\mu K^2]$')
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
         plt.title('dust')
         plt.legend(frameon=False)
         plt.savefig(f"{plots_dir}/cl_dust.png", bbox_inches='tight')
-        plt.clf()
-
-        print("-------------------")
-        print("plotting SEDs")
-        plt.plot(freqs, sed_synch.values(), '-o', label='synchro')
-        plt.plot(freqs, sed_dust.values(), '-o', label='dust')
-        plt.loglog()
-        plt.xlabel('frequency [GHz]')
-        plt.title('SEDs')
-        plt.legend(frameon=False)
-        plt.savefig(f"{plots_dir}/seds.png", bbox_inches='tight')
         plt.clf()
 
         print("-------------------")
