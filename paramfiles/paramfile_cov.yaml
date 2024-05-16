@@ -7,11 +7,11 @@ output_dir: "../outputs_cov"
 
 # Metadata related to simulations
 ## General parameters
-nside: 512
+nside: 256
 nsims: 2
 
 # if personalized binning scheme, indicate path here
-# otherwise a linear binning will be used
+# otherwise a binning scheme with bandpowers of constant width will be used
 # .txt file with bandpowers edges
 bpw_edges: 
 

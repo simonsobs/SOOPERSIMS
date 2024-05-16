@@ -7,7 +7,7 @@ output_dir: "../outputs_tf"
 
 # Metadata related to simulations
 ## General parameters
-nside: 512
+nside: 256
 nsims: 2
 
 ## Power law parameters
