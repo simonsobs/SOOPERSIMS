@@ -66,6 +66,7 @@ def cov_sims(args):
 
     out_dir = config['output_dir']
     plots_dir = out_dir + "/plots"
+    config['output_units'] = 'uK_CMB'
     config['date'] = date.today()
 
     # create directories

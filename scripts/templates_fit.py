@@ -248,7 +248,9 @@ def templates_fit(args):
     if config['bpw_edges'] is not None:
         bpw_edges = np.loadtxt(config['bpw_edges']).astype(int)
     else:
-        bpw_edges = np.arange(2, lmax_out, 4)
+        ell_per_bin = 4
+        bpw_edges = np.arange(2, lmax_out, ell_per_bin)
+        config['bpw_edges'] = f"bandpowers of constant width ({ell_per_bin} multipoles per bin)"  # noqa
     bins = get_bins(nside_out, bpw_edges, dell=False)
     ell_arr = bins.get_effective_ells()
 
