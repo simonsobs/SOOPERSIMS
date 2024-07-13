@@ -300,7 +300,8 @@ def templates_fit(args):
     config['alpha_dust_BB'] = alpha_dust[2]
 
     # Copy the configuration file to output directory
-    with open("../paramfiles/paramfile_cov_fit.yaml", "w") as f:
+    fit_paramfile = args.globals.replace(".yaml", "_fit.yaml")
+    with open(fit_paramfile, "w") as f:
         yaml.dump(config, stream=f,
                   default_flow_style=False, sort_keys=False)
 
