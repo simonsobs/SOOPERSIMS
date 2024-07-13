@@ -4,6 +4,7 @@ import os
 import numpy as np
 import healpy as hp
 from datetime import date
+import mpi_utils as mu
 
 
 def fcmb(nu):
@@ -66,11 +67,12 @@ def cov_sims(args):
 
     out_dir = config['output_dir']
     plots_dir = out_dir + "/plots"
+    cls_dir = out_dir + "/cls"
     config['output_units'] = 'uK_CMB'
     config['date'] = date.today()
 
     # create directories
-    dirs = [out_dir, plots_dir]
+    dirs = [out_dir, plots_dir, cls_dir]
     for d in dirs:
         os.makedirs(d, exist_ok=True)
 
@@ -144,11 +146,36 @@ def cov_sims(args):
     sed_cmb = {nu: comp_sed(nu, None, None, None, 'cmb')
                for nu in freqs}
 
+    # Save theory power spectra
+    for inu1, nu1 in enumerate(freqs):
+        for inu2, nu2 in enumerate(freqs):
+            if inu2 < inu1:
+                continue
+            cl_dust_scaled = cl_dust * (sed_dust[nu1] / fcmb(nu1)
+                                        * sed_dust[nu2] / fcmb(nu2))
+            cl_synch_scaled = cl_synch * (sed_synch[nu1] / fcmb(nu1)
+                                          * sed_synch[nu2] / fcmb(nu2))
+            hp.write_cl(
+                f"{cls_dir}/cl_dust_f{str(nu1).zfill(3)}_f{str(nu2).zfill(3)}.fits",
+                cl_dust_scaled, overwrite=True
+            )
+            hp.write_cl(
+                f"{cls_dir}/cl_synch_f{str(nu1).zfill(3)}_f{str(nu2).zfill(3)}.fits",
+                cl_synch_scaled, overwrite=True
+            )
+            hp.write_cl(
+                f"{cls_dir}/cl_cmb.fits",
+                cl_cmb, overwrite=True
+            )
+
+    # Initialize MPI
+    mu.init(True)
+
     # Generate alm drawing Gaussian random numbers from power spectra
     print("-------------------")
     print("Simulations")
     print("Generating alm")
-    for seed in range(nsims):
+    for seed in mu.taskrange(nsims - 1):
         print("-------------------")
         print(f"- {seed:04d}")
         sims_dir = f"{out_dir}/sims/{seed:04d}/"
