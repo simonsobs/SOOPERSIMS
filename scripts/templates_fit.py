@@ -240,8 +240,12 @@ def templates_fit(args):
     dust_maps = hp.alm2map(alm_clip_dust, nside=nside_out)
 
     print("-------------------")
-    print("loading apodized SAT mask")
-    mask = hp.read_map("/global/cfs/cdirs/sobs/awg_bb/masks/mask_apo10.0_MSS2_SAT1_f090_coadd.fits")  # noqa
+    print("loading apodized mask")
+    if config["mask"] is None:
+        mask_dir = "/global/cfs/cdirs/sobs/awg_bb/masks/mask_apo10.0_MSS2_SAT1_f090_coadd.fits"
+    else:
+        mask_dir = config["mask"]
+    mask = hp.read_map(mask_dir)
     mask = hp.ud_grade(mask, nside_out)
 
     print("binning")
