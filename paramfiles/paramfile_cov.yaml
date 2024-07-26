@@ -13,7 +13,11 @@ nsims: 2
 # if personalized binning scheme, indicate path here
 # otherwise a binning scheme with bandpowers of constant width will be used
 # .txt file with bandpowers edges
-bpw_edges: 
+bpw_edges:
+
+# Path to apodized mask that will be used to weight the sky. If null, use
+# standard SAT mask (without point masking)
+mask: null
 
 ## instrument model
 freqs: [23, 93, 145, 353]
