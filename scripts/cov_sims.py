@@ -68,6 +68,7 @@ def cov_sims(args):
     out_dir = config['output_dir']
     plots_dir = out_dir + "/plots"
     cls_dir = out_dir + "/cls"
+    os.makedirs(cls_dir, exist_ok=True)
     config['output_units'] = 'uK_CMB'
     config['date'] = date.today()
 
@@ -183,11 +184,13 @@ def cov_sims(args):
 
         np.random.seed(seed)
 
-        # generate alm from cl for all components
-        alm_cmb = hp.synalm(cl_cmb, lmax=lmax, new=True)
-        alm_synch = hp.synalm(cl_synch, lmax=lmax, new=True)
-        alm_dust = hp.synalm(cl_dust, lmax=lmax, new=True)
+        muK_to_K = 1.e-6
 
+        # generate alm from cl for all components in K units
+        alm_cmb = hp.synalm(cl_cmb, lmax=lmax, new=True) * muK_to_K
+        alm_synch = hp.synalm(cl_synch, lmax=lmax, new=True) * muK_to_K
+        alm_dust = hp.synalm(cl_dust, lmax=lmax, new=True) * muK_to_K
+ 
         for nu in freqs:
             print(f"  {nu:03d} GHz")
             fname_out = f"{sims_dir}/alm_{nu:03d}GHz_lmax{lmax}_{seed:04d}.fits"  # noqa
@@ -265,7 +268,7 @@ def cov_sims(args):
         m_tot = hp.alm2map(alm, nside=nside)
 
         stokes = ['I', 'Q', 'U']
-        units = r'$\mu K_{CMB}$'
+        units = r'$K_{CMB}$'
         plt.figure(figsize=(14, 14))
         for i in range(3):
             hp.mollview(m_cmb[i], sub=(4, 3, (i+1)), cmap=cm.coolwarm,

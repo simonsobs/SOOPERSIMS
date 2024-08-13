@@ -79,7 +79,9 @@ def tf_sims(args):
 
         np.random.seed(seed)
 
-        almT, almE, almB = hp.synalm(cl, lmax=lmax, new=False)
+        muK_to_K = 1.e-6
+        # generate alm from cl for all components in K units
+        almT, almE, almB = hp.synalm(cl, lmax=lmax, new=False) * muK_to_K
 
         alm_pureT = np.array([almT, 0*almE, 0*almB])
         alm_pureE = np.array([0*almT, almE, 0*almB])
@@ -103,7 +105,7 @@ def tf_sims(args):
         plt.loglog()
         plt.ylim([1e-2, 1e6])
         plt.xlabel(r'multipole $\ell$')
-        plt.ylabel(r'$C_\ell$')
+        plt.ylabel(r'$C_\ell \, [\mu K^2]$')
         plt.title(fr"power law for transfer function: $\alpha={alpha}$")
         plt.legend(frameon=False, ncols=3)
         plt.savefig(f"{plots_dir}/plaw_tf.png", bbox_inches='tight')
