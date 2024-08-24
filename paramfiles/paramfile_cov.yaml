@@ -7,8 +7,11 @@ output_dir: "../outputs_cov"
 
 # Metadata related to simulations
 ## General parameters
-nside: 256
+nside: 512
 nsims: 2
+
+# use mpi parallelization?
+mpi_bool: False
 
 # if personalized binning scheme, indicate path here
 # otherwise a binning scheme with bandpowers of constant width will be used
