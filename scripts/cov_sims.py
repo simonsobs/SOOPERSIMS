@@ -4,48 +4,8 @@ import os
 import numpy as np
 import healpy as hp
 from datetime import date
+import utils as u
 import mpi_utils as mu
-
-
-def fcmb(nu):
-    """
-    Convert from thermodynamic (CMB) to Rayleigh-Jeans units,
-    at frequency nu.
-    -----------------
-    input:
-        nu: frequency
-    output:
-        RJ -> CMB conversion factor
-    """
-    x = 0.017608676067552197*nu
-    ex = np.exp(x)
-    return ex * (x / (ex-1))**2
-
-
-def comp_sed(nu, nu0, beta, temp, typ):
-    """
-    Takes as input an amplitude in CMB units,
-    return the amplitude extrapolated at frequency nu, in RJ units.
-    -----------------
-    input:
-        nu: frequency to scale to
-        nu0: reference frequency for the component
-        beta: SED power law index (e.g., beta_synch or beta_dust)
-        typ: name of the component, can be 'cmb', 'dust' or 'synch'
-    output:
-        frequency scaling factor
-    """
-    if typ == 'cmb':
-        return fcmb(nu)
-    elif typ == 'dust':
-        x_to = 0.04799244662211351 * nu / temp
-        x_from = 0.04799244662211351 * nu0 / temp
-        ex_to = np.exp(x_to)
-        ex_from = np.exp(x_from)
-        return (nu/nu0)**(1+beta) * (ex_from-1)/(ex_to-1) * fcmb(nu0)
-    elif typ == 'synch':
-        return (nu/nu0)**beta * fcmb(nu0)
-    return None
 
 
 def cov_sims(args):
@@ -68,8 +28,7 @@ def cov_sims(args):
     out_dir = config['output_dir']
     plots_dir = out_dir + "/plots"
     cls_dir = out_dir + "/cls"
-    os.makedirs(cls_dir, exist_ok=True)
-    config['output_units'] = 'uK_CMB'
+    config['output_units'] = 'K_CMB'
     config['date'] = date.today()
 
     # create directories
@@ -124,13 +83,13 @@ def cov_sims(args):
     # (TT, EE, BB, 0*TE)
     cl_synch = np.zeros((4, len(ells)))
     cl_dust = np.zeros((4, len(ells)))
-    cl_synch[0] = A_s_TT * (ells / ell_0)**alpha_s_TT
-    cl_synch[1] = A_s_EE * (ells / ell_0)**alpha_s_EE
-    cl_synch[2] = A_s_BB * (ells / ell_0)**alpha_s_BB
+    cl_synch[0] = u.plaw(ells, A_s_TT, alpha_s_TT)
+    cl_synch[1] = u.plaw(ells, A_s_EE, alpha_s_EE)
+    cl_synch[2] = u.plaw(ells, A_s_BB, alpha_s_BB)
 
-    cl_dust[0] = A_d_TT * (ells / ell_0)**alpha_d_TT
-    cl_dust[1] = A_d_EE * (ells / ell_0)**alpha_d_EE
-    cl_dust[2] = A_d_BB * (ells / ell_0)**alpha_d_BB
+    cl_dust[0] = u.plaw(ells, A_d_TT, alpha_d_TT)
+    cl_dust[1] = u.plaw(ells, A_d_EE, alpha_d_EE)
+    cl_dust[2] = u.plaw(ells, A_d_BB, alpha_d_BB)
 
     # extend TT at ell=0,1 to avoid inf
     cl_synch[0, :2] = cl_synch[0, 2]
@@ -140,11 +99,11 @@ def cov_sims(args):
     cl_dust[1:3, :2] = 0
 
     # SEDs
-    sed_synch = {nu: comp_sed(nu, nu0_synch, beta_synch, None, 'synch')
+    sed_synch = {nu: u.comp_sed(nu, nu0_synch, beta_synch, None, 'synch')
                  for nu in freqs}
-    sed_dust = {nu: comp_sed(nu, nu0_dust, beta_dust, T_dust, 'dust')
+    sed_dust = {nu: u.comp_sed(nu, nu0_dust, beta_dust, T_dust, 'dust')
                 for nu in freqs}
-    sed_cmb = {nu: comp_sed(nu, None, None, None, 'cmb')
+    sed_cmb = {nu: u.comp_sed(nu, None, None, None, 'cmb')
                for nu in freqs}
 
     # Save theory power spectra
@@ -152,10 +111,10 @@ def cov_sims(args):
         for inu2, nu2 in enumerate(freqs):
             if inu2 < inu1:
                 continue
-            cl_dust_scaled = cl_dust * (sed_dust[nu1] / fcmb(nu1)
-                                        * sed_dust[nu2] / fcmb(nu2))
-            cl_synch_scaled = cl_synch * (sed_synch[nu1] / fcmb(nu1)
-                                          * sed_synch[nu2] / fcmb(nu2))
+            cl_dust_scaled = cl_dust * (sed_dust[nu1] / u.fcmb(nu1)
+                                        * sed_dust[nu2] / u.fcmb(nu2))
+            cl_synch_scaled = cl_synch * (sed_synch[nu1] / u.fcmb(nu1)
+                                          * sed_synch[nu2] / u.fcmb(nu2))
             hp.write_cl(
                 f"{cls_dir}/cl_dust_f{str(nu1).zfill(3)}_f{str(nu2).zfill(3)}.fits",
                 cl_dust_scaled, overwrite=True
@@ -170,7 +129,7 @@ def cov_sims(args):
             )
 
     # Initialize MPI
-    mu.init(True)
+    mu.init(config['mpi_bool'])
 
     # Generate alm drawing Gaussian random numbers from power spectra
     print("-------------------")
@@ -190,7 +149,7 @@ def cov_sims(args):
         alm_cmb = hp.synalm(cl_cmb, lmax=lmax, new=True) * muK_to_K
         alm_synch = hp.synalm(cl_synch, lmax=lmax, new=True) * muK_to_K
         alm_dust = hp.synalm(cl_dust, lmax=lmax, new=True) * muK_to_K
- 
+
         for nu in freqs:
             print(f"  {nu:03d} GHz")
             fname_out = f"{sims_dir}/alm_{nu:03d}GHz_lmax{lmax}_{seed:04d}.fits"  # noqa
@@ -202,86 +161,21 @@ def cov_sims(args):
 
             if config['bpass_integration']:
                 print("bandpass integration not implemented yet")
-                alm /= fcmb(nu)
+                alm /= u.fcmb(nu)
             else:
                 # back to CMB units
-                alm /= fcmb(nu)
+                alm /= u.fcmb(nu)
 
             # write alm to disk
             hp.write_alm(fname_out, alm, overwrite=True, out_dtype=np.float64)
 
     if args.plots:
-        import matplotlib.pyplot as plt
-        from matplotlib import cm
         print("-------------------")
         print("plotting...")
-        xlabel = r'multipole $\ell$'
-        ylabel = r'$C_\ell \, [\mu K^2]$'
-
-        print("-------------------")
-        print("plotting input C_ells")
-        print("- CMB")
-        hp_order = ['TT', 'EE', 'BB', 'TE', 'TB', 'EB']
-        colors = ['k', 'r', 'b', 'y']
-        for i, cl in enumerate(cl_cmb):
-            plt.plot(cl, c=colors[i], label=hp_order[i])
-        plt.loglog()
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
-        plt.title('CMB')
-        plt.legend(frameon=False, ncols=2)
-        plt.savefig(f"{plots_dir}/cl_cmb.png", bbox_inches='tight')
-        plt.clf()
-
-        print("- synchro")
-        for i, cl in enumerate(cl_synch):
-            plt.plot(cl, c=colors[i], label=hp_order[i])
-        plt.axvline(ell_0, c='c', ls=':',
-                    alpha=0.5, label=fr'$\ell={ell_0:d}$')
-        plt.loglog()
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
-        plt.title('synchrotron')
-        plt.legend(frameon=False)
-        plt.savefig(f"{plots_dir}/cl_synch.png", bbox_inches='tight')
-        plt.clf()
-
-        print("- dust")
-        for i, cl in enumerate(cl_dust):
-            plt.plot(cl, c=colors[i], label=hp_order[i])
-        plt.axvline(ell_0, c='c', ls=':',
-                    alpha=0.5, label=fr'$\ell={ell_0:d}$')
-        plt.loglog()
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
-        plt.title('dust')
-        plt.legend(frameon=False)
-        plt.savefig(f"{plots_dir}/cl_dust.png", bbox_inches='tight')
-        plt.clf()
-
-        print("-------------------")
-        print("plotting an example of generated maps")
-        print(f"seed {seed:04d} - {freqs[-1]:03d} GHz")
-        m_cmb = hp.alm2map(alm_cmb, nside=nside)
-        m_synch = hp.alm2map(alm_synch, nside=nside)
-        m_dust = hp.alm2map(alm_dust, nside=nside)
-        m_tot = hp.alm2map(alm, nside=nside)
-
-        stokes = ['I', 'Q', 'U']
-        units = r'$K_{CMB}$'
-        plt.figure(figsize=(14, 14))
-        for i in range(3):
-            hp.mollview(m_cmb[i], sub=(4, 3, (i+1)), cmap=cm.coolwarm,
-                        unit=units, title=f'CMB {stokes[i]}')
-            hp.mollview(m_synch[i], sub=(4, 3, (i+4)), cmap=cm.viridis,
-                        unit=units, title=f'synch {stokes[i]}')
-            hp.mollview(m_dust[i], sub=(4, 3, (i+7)), cmap=cm.inferno,
-                        unit=units, title=f'dust {stokes[i]}')
-            hp.mollview(m_tot[i], sub=(4, 3, (i+10)), cmap=cm.coolwarm,
-                        unit=units, title=f'coadd {stokes[i]}')
-        plt.savefig(f"{plots_dir}/sim_maps_{nu}GHz_{seed:04d}.png",
-                    bbox_inches='tight')
-        plt.close()
+        u.plotter_cov_sims(plots_dir, nside,
+                           cl_cmb, cl_synch, cl_dust,
+                           alm_cmb, alm_synch, alm_dust, alm,
+                           seed, nu, ell_0)
 
 
 if __name__ == "__main__":
