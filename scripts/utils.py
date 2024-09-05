@@ -22,6 +22,22 @@ def Krj_Kcmb(nu):
     return (np.exp(x) - 1)**2. / (x**2. * np.exp(x))
 
 
+def fcmb(nu):
+    """
+    Convert from thermodynamic (CMB) to Rayleigh-Jeans units,
+    at frequency nu.
+    Inverse operation of Krj_Kcmb().
+    -----------------
+    input:
+        nu: frequency
+    output:
+        CMB -> RJ conversion factor
+    """
+    x = 0.017608676067552197*nu
+    ex = np.exp(x)
+    return ex * (x / (ex-1))**2
+
+
 def load_mask(config_mask, nside):
     """
     Load apodized mask from custom path given in paramfile.
@@ -70,34 +86,29 @@ def get_bins(nside, edges, dell):
 
 def compute_mcms(mcms_dir, nside, bins, mask):
     """
-    Compute mode-coupling matrices to compute spectra decoupled spectra.
+    Compute mode-coupling matrices (MCMs).
     -----------------
     input:
         mcms_dir: path to save mcms in
-        nside: nside of the maps to compute the spectra of
+        nside: nside of the maps
         bins: binning scheme (NmtBin object)
         mask: mask to compute the mcms of
     output:
-        list of workspaces with MCMs, spin0xspon0 and spin2xspin2
+        list of workspaces with MCMs, spin0xspin0 and spin2xspin2
     """
     npix = hp.nside2npix(nside)
     fname_mcm_0x0 = f"{mcms_dir}/mcm_0x0.fits"
-    # fname_mcm_0x2 = f"{mcms_dir}/mcm_0x2.fits"
     fname_mcm_2x2 = f"{mcms_dir}/mcm_2x2.fits"
     wsp_0x0 = nmt.NmtWorkspace()
-    # wsp_0x2 = nmt.NmtWorkspace()
     wsp_2x2 = nmt.NmtWorkspace()
     mdum_0 = np.zeros([1, npix])
     mdum_2 = np.zeros([2, npix])
     f_0 = nmt.NmtField(mask, mdum_0)
     f_2 = nmt.NmtField(mask, mdum_2)
     wsp_0x0.compute_coupling_matrix(f_0, f_0, bins, n_iter=3)
-    # wsp_0x2.compute_coupling_matrix(f_0, f_2, bins, n_iter=3)
     wsp_2x2.compute_coupling_matrix(f_2, f_2, bins, n_iter=3)
     wsp_0x0.write_to(fname_mcm_0x0)
-    # wsp_0x2.write_to(fname_mcm_0x2)
     wsp_2x2.write_to(fname_mcm_2x2)
-    # workspaces = [wsp_0x0, wsp_0x2, wsp_2x2]
     return [wsp_0x0, wsp_2x2]
 
 
@@ -108,7 +119,7 @@ def compute_cls(maps, msk, wsp):
     -----------------
     input:
         maps: healpy maps [IQU] to compute the auto-spectra of
-        msk: apodized mask on which spectra have to be computed
+        msk: apodized mask on which spectra will be computed
         wsp: list of workspaces containing the mode-coupling matrices
              [spin0xspin0, spin2xspin2]
     output:
@@ -117,10 +128,8 @@ def compute_cls(maps, msk, wsp):
     field_0 = nmt.NmtField(msk, [maps[0]])  # I
     field_2 = nmt.NmtField(msk, [maps[1], maps[2]])  # Q,U
     cl_0x0 = wsp[0].decouple_cell(nmt.compute_coupled_cell(field_0, field_0))
-    # cl_0x2 = wsp[1].decouple_cell(nmt.compute_coupled_cell(field_0, field_2))
     cl_2x2 = wsp[1].decouple_cell(nmt.compute_coupled_cell(field_2, field_2))
     cl_2x2 = np.array([cl_2x2[0], cl_2x2[-1]])
-    # cells = np.concatenate((cl_0x0, cl_0x2, cl_2x2), axis=0)
     cells = np.concatenate((cl_0x0, cl_2x2), axis=0)
     return cells
 
@@ -175,21 +184,6 @@ def fit_routine(xdata, ydata):
     slopes = list(map(float, slopes))
     idx_min = list(map(int, idx_min))
     return amplitudes, slopes, idx_min, idx_max
-
-
-def fcmb(nu):
-    """
-    Convert from thermodynamic (CMB) to Rayleigh-Jeans units,
-    at frequency nu.
-    -----------------
-    input:
-        nu: frequency
-    output:
-        RJ -> CMB conversion factor
-    """
-    x = 0.017608676067552197*nu
-    ex = np.exp(x)
-    return ex * (x / (ex-1))**2
 
 
 def comp_sed(nu, nu0, beta, temp, typ):
