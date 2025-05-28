@@ -13,11 +13,6 @@ nsims: 2
 # use mpi parallelization?
 mpi_bool: False
 
-# if personalized binning scheme, indicate path here
-# otherwise a binning scheme with bandpowers of constant width will be used
-# .txt file with bandpowers edges
-bpw_edges:
-
 # Path to apodized mask that will be used to weight the sky. If null, use
 # standard SAT mask (without point masking)
 mask: null
