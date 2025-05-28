@@ -12,11 +12,11 @@ def cov_sims(args):
     """
     Generate nsims simulations of spherical harmonics transform (alm)
     drawing Gaussian realizations from CMB and foregrounds power spectra,
-    to be used for covariance estimation or transfer function validation.
+    to be used for covariance estimation.
     Inputs:
         args: yaml configuration file with parameters
     Outputs:
-        simulated alms for covariance estimation / tf validation
+        simulated alms for covariance estimation
     """
 
     # Load configuration file
@@ -26,9 +26,9 @@ def cov_sims(args):
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     out_dir = config['output_dir']
-    plots_dir = out_dir + "/plots"
-    cls_dir = out_dir + "/cls"
-    config['output_units'] = 'K_CMB'
+    plots_dir = f"{out_dir}/plots"
+    cls_dir = f"{out_dir}/cls"
+    config['output_units'] = 'uK_CMB'
     config['date'] = date.today()
 
     # create directories
@@ -46,27 +46,21 @@ def cov_sims(args):
     nsims = config['nsims']
     nside = config['nside']
     lmax = 3*nside - 1
-    ells = np.arange(lmax+1)
+    ells = np.arange(lmax + 1)
 
     # CMB
     cl_cmb = hp.read_cl(config['cmb_cls_path'])
-    # synchrotron
-    A_s_TT = config['A_synch_TT']
-    A_s_EE = config['A_synch_EE']
-    A_s_BB = config['A_synch_BB']
-    alpha_s_TT = config['alpha_synch_TT']
-    alpha_s_EE = config['alpha_synch_EE']
-    alpha_s_BB = config['alpha_synch_BB']
+    # foregrounds
     beta_synch = config['beta_synch']
-    # dust
-    A_d_TT = config['A_dust_TT']
-    A_d_EE = config['A_dust_EE']
-    A_d_BB = config['A_dust_BB']
-    alpha_d_TT = config['alpha_dust_TT']
-    alpha_d_EE = config['alpha_dust_EE']
-    alpha_d_BB = config['alpha_dust_BB']
     beta_dust = config['beta_dust']
     T_dust = config['T_dust']
+    A_s, A_d = {}, {}
+    alpha_s, alpha_d = {}, {}
+    for pols in ['TT', 'EE', 'BB']:
+        A_s[pols] = config[f'A_synch_{pols}']
+        alpha_s[pols] = config[f'alpha_synch_{pols}']
+        A_d[pols] = config[f'A_dust_{pols}']
+        alpha_d[pols] = config[f'alpha_dust_{pols}']
 
     nu0_synch = 23.
     nu0_dust = 353.
@@ -79,17 +73,14 @@ def cov_sims(args):
     print(f" - ell_pivot = {ell_0}")
     print(f" - number of simulations = {nsims}")
 
-    # foregrounds C_ells from config (fitted) parameters
+    print("-------------------")
+    print("building foregrounds C_ells from fitted parameters")
     # (TT, EE, BB, 0*TE)
     cl_synch = np.zeros((4, len(ells)))
     cl_dust = np.zeros((4, len(ells)))
-    cl_synch[0] = u.plaw(ells, A_s_TT, alpha_s_TT)
-    cl_synch[1] = u.plaw(ells, A_s_EE, alpha_s_EE)
-    cl_synch[2] = u.plaw(ells, A_s_BB, alpha_s_BB)
-
-    cl_dust[0] = u.plaw(ells, A_d_TT, alpha_d_TT)
-    cl_dust[1] = u.plaw(ells, A_d_EE, alpha_d_EE)
-    cl_dust[2] = u.plaw(ells, A_d_BB, alpha_d_BB)
+    for i, pols in enumerate(['TT', 'EE', 'BB']):
+        cl_synch[i] = u.plaw(ells, A_s[pols], alpha_s[pols])
+        cl_dust[i] = u.plaw(ells, A_d[pols], alpha_d[pols])
 
     # extend TT at ell=0,1 to avoid inf
     cl_synch[0, :2] = cl_synch[0, 2]
@@ -133,25 +124,22 @@ def cov_sims(args):
 
     # Generate alm drawing Gaussian random numbers from power spectra
     print("-------------------")
-    print("Simulations")
-    print("Generating alm")
+    print("Generating simulations")
     for seed in mu.taskrange(nsims - 1):
         print("-------------------")
         print(f"- {seed:04d}")
-        sims_dir = f"{out_dir}/sims/{seed:04d}/"
+        sims_dir = f"{out_dir}/sims/{seed:04d}"
         os.makedirs(sims_dir, exist_ok=True)
 
         np.random.seed(seed)
 
-        muK_to_K = 1.e-6
-
-        # generate alm from cl for all components in K units
-        alm_cmb = hp.synalm(cl_cmb, lmax=lmax, new=True) * muK_to_K
-        alm_synch = hp.synalm(cl_synch, lmax=lmax, new=True) * muK_to_K
-        alm_dust = hp.synalm(cl_dust, lmax=lmax, new=True) * muK_to_K
+        # generate alm from cl for all components in muK units
+        alm_cmb = hp.synalm(cl_cmb, lmax=lmax, new=True)
+        alm_synch = hp.synalm(cl_synch, lmax=lmax, new=True)
+        alm_dust = hp.synalm(cl_dust, lmax=lmax, new=True)
 
         for nu in freqs:
-            print(f"  {nu:03d} GHz")
+            # print(f"  {nu:03d} GHz")
             fname_out = f"{sims_dir}/alm_{nu:03d}GHz_lmax{lmax}_{seed:04d}.fits"  # noqa
 
             # rescale for component SEDs and coadd
@@ -171,7 +159,6 @@ def cov_sims(args):
 
     if args.plots:
         print("-------------------")
-        print("plotting...")
         u.plotter_cov_sims(plots_dir, nside,
                            cl_cmb, cl_synch, cl_dust,
                            alm_cmb, alm_synch, alm_dust, alm,
