@@ -2,7 +2,6 @@ import os
 import numpy as np
 import healpy as hp
 import pymaster as nmt
-from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
@@ -60,58 +59,6 @@ def load_mask(config_mask, nside):
     return mask
 
 
-def get_bins(nside, edges, dell):
-    """
-    function for NaMaster binning scheme needed to compute spectra,
-    given manual bandpowers edges.
-    -----------------
-    input:
-        nside: nside of the maps to compute the spectra of
-        edges: array with personalized bandpowers edges
-        dell: bool, True if you want D_ell, False for C_ell
-    output:
-        bins: NmtBin object
-    """
-    bpws = np.zeros(3*nside, dtype=int) - 1
-    weights = np.ones(3*nside)
-    for ibpw, (l0, lf) in enumerate(zip(edges[:-1], edges[1:])):
-        if lf < 3*nside:
-            bpws[l0:lf] = ibpw
-
-    larr_all = np.arange(3*nside)
-    bins = nmt.NmtBin(nside, bpws=bpws, ells=larr_all,
-                      weights=weights, is_Dell=dell)
-    return bins
-
-
-def compute_mcms(mcms_dir, nside, bins, mask):
-    """
-    Compute mode-coupling matrices (MCMs).
-    -----------------
-    input:
-        mcms_dir: path to save mcms in
-        nside: nside of the maps
-        bins: binning scheme (NmtBin object)
-        mask: mask to compute the mcms of
-    output:
-        list of workspaces with MCMs, spin0xspin0 and spin2xspin2
-    """
-    npix = hp.nside2npix(nside)
-    fname_mcm_0x0 = f"{mcms_dir}/mcm_0x0.fits"
-    fname_mcm_2x2 = f"{mcms_dir}/mcm_2x2.fits"
-    wsp_0x0 = nmt.NmtWorkspace()
-    wsp_2x2 = nmt.NmtWorkspace()
-    mdum_0 = np.zeros([1, npix])
-    mdum_2 = np.zeros([2, npix])
-    f_0 = nmt.NmtField(mask, mdum_0)
-    f_2 = nmt.NmtField(mask, mdum_2)
-    wsp_0x0.compute_coupling_matrix(f_0, f_0, bins, n_iter=3)
-    wsp_2x2.compute_coupling_matrix(f_2, f_2, bins, n_iter=3)
-    wsp_0x0.write_to(fname_mcm_0x0)
-    wsp_2x2.write_to(fname_mcm_2x2)
-    return [wsp_0x0, wsp_2x2]
-
-
 def compute_cls(maps, msk, wsp):
     """
     Compute auto power spectra of maps on a given mask,
@@ -166,6 +113,7 @@ def fit_routine(xdata, ydata):
         idx_min: starting index for the fit
         idx_max: last index for the fit
     """
+    from scipy.optimize import curve_fit
     y = np.log10(ydata)
     idx_min = []
     idx_max = -3
@@ -244,13 +192,15 @@ def plotter_templates(plots_dir, maps_synch, maps_dust,
     plt.suptitle("PySM templates d9s4")
     for i in range(3):
         v = min(i, 1)
-        hp.mollview(maps_synch[i], sub=(2, 3, (i+4)), cmap=cm.viridis,
-                    min=-vrange_synch[v] if i != 0 else -100,
-                    max=vrange_synch[v],
-                    unit=r'$\mu K_{CMB}$', title=f'synch {stokes[i]}')
-        hp.mollview(maps_dust[i], sub=(2, 3, (i+1)), cmap=cm.inferno,
-                    min=-vrange_dust[v], max=vrange_dust[v],
-                    unit=r'$\mu K_{CMB}$', title=f'dust {stokes[i]}')
+        hp.projview(maps_synch[i], sub=(2, 3, (i+4)),
+                    cmap=cm.viridis, min=-vrange_synch[v] if i != 0 else -100,
+                    max=vrange_synch[v], unit=r'$\mu K_{CMB}$',
+                    rlabel=stokes[i], llabel='synch' if i == 0 else '')
+        hp.projview(maps_dust[i], sub=(2, 3, (i+1)),
+                    cmap=cm.inferno, min=-vrange_dust[v],
+                    max=vrange_dust[v], unit=r'$\mu K_{CMB}$',
+                    rlabel=stokes[i], llabel='dust' if i == 0 else '')
+    plt.tight_layout()
     plt.savefig(f"{plots_dir}/templates.png", bbox_inches='tight')
     plt.close()
 
@@ -258,19 +208,21 @@ def plotter_templates(plots_dir, maps_synch, maps_dust,
     plt.suptitle("PySM templates d9s4 - dgraded, rotated")
     for i in range(3):
         v = min(i, 1)
-        hp.mollview(maps_synch_dg_rot[i], sub=(2, 3, (i+4)), cmap=cm.viridis,
-                    min=-vrange_synch[v] if i != 0 else -100,
-                    max=vrange_synch[v],
-                    unit=r'$\mu K_{CMB}$', title=f'synch {stokes[i]}')
-        hp.mollview(maps_dust_dg_rot[i], sub=(2, 3, (i+1)), cmap=cm.inferno,
-                    min=-vrange_dust[v], max=vrange_dust[v],
-                    unit=r'$\mu K_{CMB}$', title=f'dust {stokes[i]}')
+        hp.projview(maps_synch_dg_rot[i], sub=(2, 3, (i+4)),
+                    cmap=cm.viridis, min=-vrange_synch[v] if i != 0 else -100,
+                    max=vrange_synch[v], unit=r'$\mu K_{CMB}$',
+                    rlabel=stokes[i], llabel='synch' if i == 0 else '')
+        hp.projview(maps_dust_dg_rot[i], sub=(2, 3, (i+1)),
+                    cmap=cm.inferno, min=-vrange_dust[v],
+                    max=vrange_dust[v], unit=r'$\mu K_{CMB}$',
+                    rlabel=stokes[i], llabel='dust' if i == 0 else '')
+    plt.tight_layout()
     plt.savefig(f"{plots_dir}/templates_dg_rot.png", bbox_inches='tight')
     plt.close()
 
     print("-------------------")
     print("plotting mask")
-    hp.mollview(mask, title="apodized mask")
+    hp.projview(mask, title="apodized mask")
     plt.savefig(f"{plots_dir}/mask.png", bbox_inches='tight')
     plt.close()
 
@@ -288,6 +240,7 @@ def plotter_templates(plots_dir, maps_synch, maps_dust,
     xlabel = r"multipole $\ell$"
     ylabel = r"$C_\ell \, [\mu K^2]$"
     figsize_spectra = (10, 4)
+    font_labels = 14
 
     print("plotting full spectra")
     fig, axs = plt.subplots(1, 2, figsize=figsize_spectra,
@@ -299,12 +252,11 @@ def plotter_templates(plots_dir, maps_synch, maps_dust,
             ax.plot(ell_arr, cl, colors[i], label=fields[i])
             ax.loglog()
             ax.set_title(fgs)
-            ax.set_xlabel(xlabel)
-            if j == 0:
-                ax.set_ylabel(ylabel)
+            ax.set_xlabel(xlabel, fontsize=font_labels)
         ax.axvline(ell_0, c='c', ls=':',
-                   alpha=0.5, label=fr'$\ell={ell_0:d}$')
-    plt.legend(frameon=False)
+                   alpha=0.75, label=fr'$\ell={ell_0:d}$')
+    axs[0].set_ylabel(ylabel, fontsize=font_labels)
+    plt.legend()
     plt.savefig(f"{plots_dir}/spectra.png", bbox_inches='tight')
     plt.close()
 
@@ -320,12 +272,11 @@ def plotter_templates(plots_dir, maps_synch, maps_dust,
                     colors[i], label=fields[i])
             ax.loglog()
             ax.set_title(fgs)
-            ax.set_xlabel(xlabel)
-            if j == 0:
-                ax.set_ylabel(ylabel)
+            ax.set_xlabel(xlabel, fontsize=font_labels)
         ax.axvline(ell_0, c='c', ls=':',
-                   alpha=0.5, label=fr'$\ell={ell_0:d}$')
-    plt.legend(frameon=False)
+                   alpha=0.75, label=fr'$\ell={ell_0:d}$')
+    axs[0].set_ylabel(ylabel, fontsize=font_labels)
+    plt.legend()
     plt.savefig(f"{plots_dir}/fit_data.png", bbox_inches='tight')
     plt.close()
 
@@ -343,11 +294,10 @@ def plotter_templates(plots_dir, maps_synch, maps_dust,
             ax.loglog()
             ax.set_title(fgs)
             ax.set_xlabel(xlabel)
-            if j == 0:
-                ax.set_ylabel(ylabel)
         ax.axvline(ell_0, c='c', ls=':',
-                   alpha=0.5, label=fr'$\ell={ell_0:d}$')
-    plt.legend(frameon=False)
+                   alpha=0.75, label=fr'$\ell={ell_0:d}$')
+    axs[0].set_ylabel(ylabel, fontsize=font_labels)
+    plt.legend()
     plt.savefig(f"{plots_dir}/fit.png", bbox_inches='tight')
     plt.close()
 
@@ -375,45 +325,48 @@ def plotter_cov_sims(plots_dir, nside,
     """
     xlabel = r'multipole $\ell$'
     ylabel = r'$C_\ell \, [\mu K^2]$'
+    font_labels = 14
 
-    print("-------------------")
     print("plotting input C_ells")
     print("- CMB")
     hp_order = ['TT', 'EE', 'BB', 'TE', 'TB', 'EB']
     colors = ['k', 'r', 'b', 'y']
-    for i, cl in enumerate(cl_cmb):
+    for i, cl in enumerate(cl_cmb[:-1]):
         plt.plot(cl, c=colors[i], label=hp_order[i])
     plt.loglog()
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
+    plt.xlim([2, 5000])
+    plt.xlabel(xlabel, fontsize=font_labels)
+    plt.ylabel(ylabel, fontsize=font_labels)
     plt.title('CMB')
-    plt.legend(frameon=False, ncols=2)
+    plt.legend()
     plt.savefig(f"{plots_dir}/cl_cmb.png", bbox_inches='tight')
     plt.clf()
 
     print("- synchro")
-    for i, cl in enumerate(cl_synch):
+    for i, cl in enumerate(cl_synch[:-1]):
         plt.plot(cl, c=colors[i], label=hp_order[i])
     plt.axvline(ell_0, c='c', ls=':',
-                alpha=0.5, label=fr'$\ell={ell_0:d}$')
+                alpha=0.75, label=fr'$\ell={ell_0:d}$')
     plt.loglog()
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
+    plt.xlim([2, 2000])
+    plt.xlabel(xlabel, fontsize=font_labels)
+    plt.ylabel(ylabel, fontsize=font_labels)
     plt.title('synchrotron')
-    plt.legend(frameon=False)
+    plt.legend()
     plt.savefig(f"{plots_dir}/cl_synch.png", bbox_inches='tight')
     plt.clf()
 
     print("- dust")
-    for i, cl in enumerate(cl_dust):
+    for i, cl in enumerate(cl_dust[:-1]):
         plt.plot(cl, c=colors[i], label=hp_order[i])
     plt.axvline(ell_0, c='c', ls=':',
-                alpha=0.5, label=fr'$\ell={ell_0:d}$')
+                alpha=0.75, label=fr'$\ell={ell_0:d}$')
     plt.loglog()
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
+    plt.xlim([2, 2000])
+    plt.xlabel(xlabel, fontsize=font_labels)
+    plt.ylabel(ylabel, fontsize=font_labels)
     plt.title('dust')
-    plt.legend(frameon=False)
+    plt.legend()
     plt.savefig(f"{plots_dir}/cl_dust.png", bbox_inches='tight')
     plt.clf()
 
@@ -426,17 +379,18 @@ def plotter_cov_sims(plots_dir, nside,
     m_tot = hp.alm2map(alm, nside=nside)
 
     stokes = ['I', 'Q', 'U']
-    units = r'$K_{CMB}$'
+    units = r'$\mu \mathrm{K_{CMB}}$'
     plt.figure(figsize=(14, 14))
     for i in range(3):
-        hp.mollview(m_cmb[i], sub=(4, 3, (i+1)), cmap=cm.coolwarm,
-                    unit=units, title=f'CMB {stokes[i]}')
-        hp.mollview(m_synch[i], sub=(4, 3, (i+4)), cmap=cm.viridis,
-                    unit=units, title=f'synch {stokes[i]}')
-        hp.mollview(m_dust[i], sub=(4, 3, (i+7)), cmap=cm.inferno,
-                    unit=units, title=f'dust {stokes[i]}')
-        hp.mollview(m_tot[i], sub=(4, 3, (i+10)), cmap=cm.coolwarm,
-                    unit=units, title=f'coadd {stokes[i]}')
+        hp.projview(m_cmb[i], sub=(4, 3, (i+1)), cmap=cm.coolwarm,
+                    unit=units, rlabel=stokes[i], llabel='CMB' if i == 0 else '')
+        hp.projview(m_synch[i], sub=(4, 3, (i+4)), cmap=cm.viridis,
+                    unit=units, rlabel=stokes[i], llabel='synch' if i == 0 else '')
+        hp.projview(m_dust[i], sub=(4, 3, (i+7)), cmap=cm.inferno,
+                    unit=units, rlabel=stokes[i], llabel='dust' if i == 0 else '')
+        hp.projview(m_tot[i], sub=(4, 3, (i+10)), cmap=cm.coolwarm,
+                    unit=units, rlabel=stokes[i], llabel='coadd' if i == 0 else '')
+    plt.tight_layout()
     plt.savefig(f"{plots_dir}/sim_maps_{nu}GHz_{seed:04d}.png",
                 bbox_inches='tight')
     plt.close()
