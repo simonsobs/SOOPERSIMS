@@ -36,17 +36,50 @@ def cov_sims(args):
     for d in dirs:
         os.makedirs(d, exist_ok=True)
 
+    fgs_model = config['fgs_model']
+    read_alm = config['read_alm']
+    store_alm = config['store_alm']
+    store_maps = config['store_maps']
+    if store_maps:
+        pix_type = config['pix_type']
+        if pix_type == 'car':
+            from pixell import enplot, enmap, curvedsky
+            fname_car_template = "/pscratch/sd/c/cranucci/BB/SOOPERSIMS/data/band_car_fejer1_5arcmin.fits"
+            fname_car_template = config['car_template']
+            shape, wcs = enmap.read_map_geometry(fname_car_template)
+            res = int(config['res'])
+
     # Copy the configuration file to output directory
-    with open(f"{out_dir}/config.yaml", "w") as f:
+    fname_config_out = f"{out_dir}/config_{fgs_model}"
+    if store_maps:
+        fname_config_out += f"_{pix_type}"
+        if pix_type == 'car':
+            fname_config_out += f"_{res}arcmin"
+    fname_config_out += ".yaml"
+    with open(fname_config_out, "w") as f:
         yaml.dump(config, stream=f,
                   default_flow_style=False, sort_keys=False)
 
     # Get parameters from config file
     freqs = list(map(int, config['freqs']))
+    nfreqs = len(freqs)
     nsims = config['nsims']
     nside = config['nside']
     lmax = 3*nside - 1
     ells = np.arange(lmax + 1)
+
+    smooth = config['SAT_beams']
+    if smooth:
+        fwhm_amin = {'SATp1_f090': 28.4, 'SATp1_f150': 20.0,
+                     'SATp3_f090': 28.0, 'SATp3_f150': 19.4}
+        fwhm_rad = {key: np.deg2rad(fwhm_amin[key] / 60.)
+                    for key in fwhm_amin.keys()}
+        nbeams = int(len(fwhm_amin.keys()) / 2)
+        if nfreqs != nbeams:
+            print("ERROR: number of frequencies and number of beams must match.")
+            print(f"nfreqs: {nfreqs} != nbeams: {nbeams}")
+            import sys
+            sys.exit(0)
 
     # CMB
     cl_cmb = hp.read_cl(config['cmb_cls_path'])
@@ -126,43 +159,123 @@ def cov_sims(args):
     print("-------------------")
     print("Generating simulations")
     for seed in mu.taskrange(nsims - 1):
-        print("-------------------")
-        print(f"- {seed:04d}")
+        print(f"{seed:04d}")
         sims_dir = f"{out_dir}/sims/{seed:04d}"
-        os.makedirs(sims_dir, exist_ok=True)
+        if not read_alm:
+            os.makedirs(sims_dir, exist_ok=True)
 
-        np.random.seed(seed)
-
-        # generate alm from cl for all components in muK units
-        alm_cmb = hp.synalm(cl_cmb, lmax=lmax, new=True)
-        alm_synch = hp.synalm(cl_synch, lmax=lmax, new=True)
-        alm_dust = hp.synalm(cl_dust, lmax=lmax, new=True)
+            # generate alm from cl for all components in muK units
+            np.random.seed(seed)
+            alm_cmb = hp.synalm(cl_cmb, lmax=lmax, new=True)
+            alm_synch = hp.synalm(cl_synch, lmax=lmax, new=True)
+            alm_dust = hp.synalm(cl_dust, lmax=lmax, new=True)
 
         for nu in freqs:
-            # print(f"  {nu:03d} GHz")
-            fname_out = f"{sims_dir}/alm_{nu:03d}GHz_lmax{lmax}_{seed:04d}.fits"  # noqa
-
-            # rescale for component SEDs and coadd
-            alm = (alm_synch*sed_synch[nu] +
-                   alm_dust*sed_dust[nu] +
-                   alm_cmb*sed_cmb[nu])
-
-            if config['bpass_integration']:
-                print("bandpass integration not implemented yet")
-                alm /= u.fcmb(nu)
+            if store_maps and read_alm:
+                if smooth:
+                    fnames_alm = [f"{sims_dir}/alm_{fgs_model}_{nu:03d}GHz_SATp1_lmax{lmax}_{seed:04d}.fits",  # noqa
+                                  f"{sims_dir}/alm_{fgs_model}_{nu:03d}GHz_SATp3_lmax{lmax}_{seed:04d}.fits"]  # noqa
+                    alm_satp1 = hp.read_alm(fnames_alm[0], hdu=(1, 2, 3))
+                    alm_satp3 = hp.read_alm(fnames_alm[1], hdu=(1, 2, 3))
+                else:
+                    fname_alm = f"{sims_dir}/alm_{fgs_model}_{nu:03d}GHz_lmax{lmax}_{seed:04d}.fits"  # noqa
+                    alm = hp.read_alm(fname_alm, hdu=(1, 2, 3))
             else:
-                # back to CMB units
-                alm /= u.fcmb(nu)
+                # rescale for component SEDs and coadd
+                alm = (alm_synch * sed_synch[nu] +
+                       alm_dust * sed_dust[nu] +
+                       alm_cmb * sed_cmb[nu])
+    
+                if config['bpass_integration']:
+                    print("bandpass integration not implemented yet")
+                    alm /= u.fcmb(nu)
+                else:
+                    # back to CMB units
+                    alm /= u.fcmb(nu)
 
-            # write alm to disk
-            hp.write_alm(fname_out, alm, overwrite=True, out_dtype=np.float64)
+                if smooth:
+                    # smooth alm with SATs beams
+                    alm_satp1 = hp.smoothalm(alm,
+                                             fwhm=fwhm_rad[f'SATp1_f{nu:03d}'],
+                                             inplace=False)
+                    alm_satp3 = hp.smoothalm(alm,
+                                             fwhm=fwhm_rad[f'SATp3_f{nu:03d}'],
+                                             inplace=False)
+
+                if store_alm:
+                    if smooth:
+                        # write alm to disk (smoothed)
+                        for alm_beam, sat in zip([alm_satp1, alm_satp3], ['SATp1', 'SATp3']):
+                            fname_out = f"{sims_dir}/alm_{fgs_model}_{nu:03d}GHz_{sat}_lmax{lmax}_{seed:04d}.fits"  # noqa
+                            hp.write_alm(fname_out, alm_beam,
+                                         overwrite=True, out_dtype=np.float64)
+                    else:
+                        # write alm to disk (no beam smoothing)
+                        fname_out = f"{sims_dir}/alm_{fgs_model}_{nu:03d}GHz_lmax{lmax}_{seed:04d}.fits"  # noqa
+                        hp.write_alm(fname_out, alm, overwrite=True, out_dtype=np.float64)
+
+            if store_maps:
+                # project alm to maps and write to disk
+                if pix_type == 'hp':
+                    if smooth:
+                        for alm_beam, sat in zip([alm_satp1, alm_satp3], ['SATp1', 'SATp3']):
+                            maps_beam = hp.alm2map(alm_beam, nside=nside)
+                            fname_out = f"{sims_dir}/maps_hp_{fgs_model}_{nu:03d}GHz_{sat}_nside{nside}_{seed:04d}.fits"  # noqa
+                            hp.write_map(fname_out, maps_beam, dtype=np.float64, overwrite=True)
+                    else:
+                        maps = hp.alm2map(alm, nside=nside)
+                        fname_out = f"{sims_dir}/maps_hp_{fgs_model}_{nu:03d}GHz_nside{nside}_{seed:04d}.fits"  # noqa
+                        hp.write_map(fname_out, maps, dtype=np.float64, overwrite=True)
+
+                elif pix_type == 'car':
+                    if smooth:
+                        for alm_beam, sat in zip([alm_satp1, alm_satp3], ['SATp1', 'SATp3']):
+                            maps_beam = enmap.zeros((3,) + shape, wcs)
+                            curvedsky.alm2map(alm_beam, maps_beam)
+                            fname_out = f"{sims_dir}/maps_car_{fgs_model}_{nu:03d}GHz_{sat}_{res}arcmin_{seed:04d}.fits"  # noqa
+                            enmap.write_map(fname_out, maps_beam)
+                    else:
+                        maps = enmap.zeros((3,) + shape, wcs)
+                        curvedsky.alm2map(alm, maps)
+                        fname_out = f"{sims_dir}/maps_car_{fgs_model}_{nu:03d}GHz_{res}arcmin_{seed:04d}.fits"  # noqa
+                        enmap.write_map(fname_out, maps)
 
     if args.plots:
         print("-------------------")
-        u.plotter_cov_sims(plots_dir, nside,
-                           cl_cmb, cl_synch, cl_dust,
-                           alm_cmb, alm_synch, alm_dust, alm,
-                           seed, nu, ell_0)
+        print("plotting")
+        if pix_type == 'hp':
+            if smooth:
+                alm = alm_beam
+            if not read_alm:
+                u.plotter_cov_sims(plots_dir, nside,
+                                   cl_cmb, cl_synch, cl_dust,
+                                   alm_cmb, alm_synch, alm_dust, alm,
+                                   seed, nu, ell_0)
+            else:
+                import matplotlib.pyplot as plt
+                from matplotlib import cm
+                units = r'$\mu \mathrm{K_{CMB}}$'
+                if smooth:
+                    maps = maps_beam
+                    fname_out = f"{plots_dir}/sim_maps_hp_{nu:03d}GHz_{sat}_nside{nside}_{seed:04d}.png"
+                else:
+                    fname_out = f"{plots_dir}/sim_maps_hp_{nu:03d}GHz_nside{nside}_{seed:04d}.png"
+                hp.projview(maps[1], cmap=cm.coolwarm, unit=units,
+                            llabel=f"{nu} GHz", rlabel="Q")
+                plt.savefig(fname_out, bbox_inches='tight')
+                plt.close()
+        elif pix_type == 'car':
+            if store_maps:
+                vrange = 7.5
+                s = 1
+                if smooth:
+                    plot = enplot.plot(maps_beam[s], downgrade=4 if res<5 else 2,
+                                       colorbar=False, min=-vrange, max=vrange)
+                    enplot.write(f"{plots_dir}/sim_maps_car_{nu:03d}GHz_{sat}_{res}arcmin_{seed:04d}", plot)
+                else:
+                    plot = enplot.plot(maps[s], downgrade=4 if res<5 else 2,
+                                       colorbar=False, min=-vrange, max=vrange)
+                    enplot.write(f"{plots_dir}/sim_maps_car_{nu:03d}GHz_{res}arcmin_{seed:04d}", plot)
 
 
 if __name__ == "__main__":
