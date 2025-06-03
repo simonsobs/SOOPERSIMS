@@ -72,8 +72,8 @@ def compute_cls(maps, msk, wsp):
     output:
         cells: decoupled power spectra [TT, EE, EB, BE, BB]
     """
-    field_0 = nmt.NmtField(msk, [maps[0]])  # I
-    field_2 = nmt.NmtField(msk, [maps[1], maps[2]])  # Q,U
+    field_0 = nmt.NmtField(msk, [maps[0]], lite=True)  # I
+    field_2 = nmt.NmtField(msk, [maps[1], maps[2]], lite=True)  # Q,U
     cl_0x0 = wsp[0].decouple_cell(nmt.compute_coupled_cell(field_0, field_0))
     cl_2x2 = wsp[1].decouple_cell(nmt.compute_coupled_cell(field_2, field_2))
     cl_2x2 = np.array([cl_2x2[0], cl_2x2[-1]])
@@ -122,10 +122,11 @@ def fit_routine(xdata, ydata):
     for i in range(y.shape[0]):
         # for the fit, select range of data after nan
         # idx_min is the index after the last nan value
-        idx_min.append(np.where(np.isnan(y[i][:10]))[0][-1] + 1)
+        # idx_min.append(np.where(np.isnan(y[i][:10]))[0][-1] + 1)
+        idx_min.append(2)
         y_fit = y[i][idx_min[i]:idx_max]
         x_fit = np.log10(xdata[idx_min[i]:idx_max])
-        (A, alpha), _ = curve_fit(plaw_log, x_fit, y_fit)
+        (A, alpha), _ = curve_fit(plaw_log, x_fit, y_fit, nan_policy='omit')
         amplitudes.append(A)
         slopes.append(alpha)
     amplitudes = list(map(float, amplitudes))
@@ -238,7 +239,7 @@ def plotter_templates(plots_dir, maps_synch, maps_dust,
     colors = ['k', 'r', 'b']
     fmt = ['k--', 'r--', 'b--']
     xlabel = r"multipole $\ell$"
-    ylabel = r"$C_\ell \, [\mu K^2]$"
+    ylabel = r"$C_\ell \, [\mu \mathrm{K}^2]$"
     figsize_spectra = (10, 4)
     font_labels = 14
 
@@ -246,17 +247,17 @@ def plotter_templates(plots_dir, maps_synch, maps_dust,
     fig, axs = plt.subplots(1, 2, figsize=figsize_spectra,
                             sharey=True, layout='constrained')
     for j, ax in enumerate(axs):
+        fgs = fgs_names[j]
         for i in range(3):
-            fgs = fgs_names[j]
             cl = cls_fgs[fgs][i]
             ax.plot(ell_arr, cl, colors[i], label=fields[i])
-            ax.loglog()
-            ax.set_title(fgs)
-            ax.set_xlabel(xlabel, fontsize=font_labels)
+        ax.loglog()
+        ax.set_title(fgs)
+        ax.set_xlabel(xlabel, fontsize=font_labels)
         ax.axvline(ell_0, c='c', ls=':',
                    alpha=0.75, label=fr'$\ell={ell_0:d}$')
     axs[0].set_ylabel(ylabel, fontsize=font_labels)
-    plt.legend()
+    axs[0].legend()
     plt.savefig(f"{plots_dir}/spectra.png", bbox_inches='tight')
     plt.close()
 
@@ -264,19 +265,21 @@ def plotter_templates(plots_dir, maps_synch, maps_dust,
     fig, axs = plt.subplots(1, 2, figsize=figsize_spectra,
                             sharey=True, layout='constrained')
     for j, ax in enumerate(axs):
+        fgs = fgs_names[j]
         for i in range(3):
-            fgs = fgs_names[j]
-            ells = ell_arr[fit_min[fgs][i]:fit_max]
-            cl = cls_fgs[fgs][i]
-            ax.plot(ells, cl[fit_min[fgs][i]:fit_max],
-                    colors[i], label=fields[i])
-            ax.loglog()
-            ax.set_title(fgs)
-            ax.set_xlabel(xlabel, fontsize=font_labels)
+            # ells = ell_arr[fit_min[fgs][i]:fit_max]
+            ells = ell_arr[:fit_max]
+            cl = cls_fgs[fgs][i][:fit_max]
+            cut = cl > 0
+            ax.plot(ells[cut], cl[cut],
+                    c=colors[i], label=fields[i])
+        ax.loglog()
+        ax.set_title(fgs)
+        ax.set_xlabel(xlabel, fontsize=font_labels)
         ax.axvline(ell_0, c='c', ls=':',
                    alpha=0.75, label=fr'$\ell={ell_0:d}$')
     axs[0].set_ylabel(ylabel, fontsize=font_labels)
-    plt.legend()
+    axs[0].legend()
     plt.savefig(f"{plots_dir}/fit_data.png", bbox_inches='tight')
     plt.close()
 
@@ -286,18 +289,18 @@ def plotter_templates(plots_dir, maps_synch, maps_dust,
     fig, axs = plt.subplots(1, 2, figsize=figsize_spectra,
                             sharey=True, layout='constrained')
     for j, ax in enumerate(axs):
+        fgs = fgs_names[j]
         for i in range(3):
-            fgs = fgs_names[j]
             cl = cls_fgs[fgs][i][lmin:]
             ax.plot(ells, plaw(ells, A[fgs][i], alpha[fgs][i]), fmt[i])
             ax.plot(ells, cl, colors[i], alpha=0.65, label=fields[i])
-            ax.loglog()
-            ax.set_title(fgs)
-            ax.set_xlabel(xlabel)
+        ax.loglog()
+        ax.set_title(fgs)
+        ax.set_xlabel(xlabel)
         ax.axvline(ell_0, c='c', ls=':',
                    alpha=0.75, label=fr'$\ell={ell_0:d}$')
     axs[0].set_ylabel(ylabel, fontsize=font_labels)
-    plt.legend()
+    axs[0].legend()
     plt.savefig(f"{plots_dir}/fit.png", bbox_inches='tight')
     plt.close()
 
@@ -391,6 +394,6 @@ def plotter_cov_sims(plots_dir, nside,
         hp.projview(m_tot[i], sub=(4, 3, (i+10)), cmap=cm.coolwarm,
                     unit=units, rlabel=stokes[i], llabel='coadd' if i == 0 else '')
     plt.tight_layout()
-    plt.savefig(f"{plots_dir}/sim_maps_{nu}GHz_{seed:04d}.png",
+    plt.savefig(f"{plots_dir}/sim_maps_hp_{nu}GHz_{seed:04d}.png",
                 bbox_inches='tight')
     plt.close()
