@@ -45,6 +45,7 @@ def templates_fit(args):
     lmax_out = 3*nside_out - 1
     global ell_0
     ell_0 = int(config['plaw_ell_pivot'])
+    fgs_model = config['fgs_model']
 
     print(f" - nside = {nside_out} -> lmax = {lmax_out}")
     print(f" - ell_pivot = {ell_0}")
@@ -54,10 +55,10 @@ def templates_fit(args):
     pysm_url = "https://portal.nersc.gov/cfs/cmb/pysm-data"
     url_synch = f"{pysm_url}/synch/synch_template_nside{nside_in}_2023.02.25.fits"
     url_dust = f"{pysm_url}/dust_gnilc/gnilc_dust_template_nside{nside_in}_2023.02.10.fits"
-    fname_synch = f"{templates_dir}/template_synch_maps.fits"
-    fname_dust = f"{templates_dir}/template_dust_maps.fits"
-    fname_alm_synch = f"{templates_dir}/template_synch_alm_lmax{lmax_in}.fits"
-    fname_alm_dust = f"{templates_dir}/template_dust_alm_lmax{lmax_in}.fits"
+    fname_synch = f"{templates_dir}/template_{fgs_model}_synch_maps.fits"
+    fname_dust = f"{templates_dir}/template_{fgs_model}_dust_maps.fits"
+    fname_alm_synch = f"{templates_dir}/template_{fgs_model}_synch_alm_lmax{lmax_in}.fits"
+    fname_alm_dust = f"{templates_dir}/template_{fgs_model}_dust_alm_lmax{lmax_in}.fits"
 
     # if alm do not exist in the out directory
     if not os.path.isfile(fname_alm_synch) or not os.path.isfile(fname_alm_dust):
@@ -157,7 +158,7 @@ def templates_fit(args):
         config[f'alpha_synch_{pols}'] = alpha_synch[i]
         config[f'alpha_dust_{pols}'] = alpha_dust[i]
 
-    # Copy the configuration file to output directory
+    # Copy the configuration file to paramfiles directory
     fit_paramfile = args.globals.replace(".yaml", "_fit.yaml")
     with open(fit_paramfile, "w") as f:
         yaml.dump(config, stream=f,
