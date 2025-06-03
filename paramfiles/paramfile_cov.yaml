@@ -9,23 +9,42 @@ output_dir: "../outputs_cov"
 ## General parameters
 nside: 512
 nsims: 2
-
+# read already simulated alm?
+read_alm: False
+# write simulated alm to disk?
+store_alm: True
+# generate maps and write them to disk?
+store_maps: True
+# (if store_maps is True) which pixellization? "hp" or "car"
+pix_type: "car"
+# resolution for car maps, in arcmin (1 or 5)
+res: 5
+# path to car geometry template
+car_template: "../data/band_car_fejer1_5arcmin.fits"
 # use mpi parallelization?
 mpi_bool: False
 
-# Path to apodized mask that will be used to weight the sky. If null, use
-# standard SAT mask (without point masking)
-mask: null
+# Path to apodized mask that will be used to weight the sky.
+# If null, use standard SAT mask (without point masking)
+mask: "/pscratch/sd/c/cranucci/BB/masks/analysis_mask_full_hp.fits"
+# mask: "/pscratch/sd/c/cranucci/BB/masks/analysis_mask_south_hp.fits"
 
 ## instrument model
-freqs: [23, 93, 145, 353]
+# freqs: [23, 93, 145, 353]
+freqs: [90, 150]
+# smooth simulations with SATp1 and SATp3 beams?
+SAT_beams: True
 # bandpass integration? If False, delta bandpasses
+# This is not implemented yet, this parameter has no effect
 bpass_integration: False
 
 ## sky model
 plaw_ell_pivot: 80
 # CMB
 cmb_cls_path: "../data/Cls_Planck2018_r0.fits"
+# foregrounds model (only d9s4 for now)
+fgs_model: "d9s4"
+# A and alpha wil be extracted from templates fit
 # synchrotron
 A_synch_TT: 
 A_synch_EE: 
