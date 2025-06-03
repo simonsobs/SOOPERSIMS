@@ -1,6 +1,7 @@
 paramfile='../paramfiles/paramfile_cov.yaml'
 paramfile_fit='../paramfiles/paramfile_cov_fit.yaml'
 
+echo "-------------------"
 echo "Running pipeline with paramfile: ${paramfile}"
 
 echo "-------------------"

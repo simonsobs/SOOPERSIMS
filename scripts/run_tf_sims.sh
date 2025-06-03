@@ -1,6 +1,7 @@
 # config files with parameters
 paramfile='../paramfiles/paramfile_tf.yaml'
 
+echo "-------------------"
 echo "Running scripts with paramfile: ${paramfile}"
 
 echo "-------------------"
