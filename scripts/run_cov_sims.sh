@@ -22,7 +22,7 @@ basedir=/home/kw6905/bbdev/SOOPERSIMS/scripts  ## YOUR RUNNING DIRECTORY
 cd $basedir
 
 paramfile='../paramfiles/paramfile_cov.yaml'
-paramfile_fit='../paramfiles/paramfile_cov_fit.yaml'
+paramfile_fit='../paramfiles/paramfile_cov_fit_v3.yaml'
 echo "Running pipeline with paramfile: ${paramfile}"
 
 # # Run to estimate Gaussian foreground parameters from non-Gaussian sims

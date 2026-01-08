@@ -63,7 +63,9 @@ def cov_sims(args):
     # Get parameters from config file
     freqs = list(map(int, config['freqs']))
     nfreqs = len(freqs)
-    nsims = config['nsims']
+    id_sim_start = config['id_sim_start']
+    id_sim_end = config['id_sim_end']
+    sim_ids = list(range(id_sim_start, id_sim_end+1))
     nside = config['nside']
     lmax = 3*nside - 1
     ells = np.arange(lmax + 1)
@@ -105,7 +107,7 @@ def cov_sims(args):
     print(f"frequencies: {freqs}")
     print(f" - nside = {nside} -> lmax = {lmax}")
     print(f" - ell_pivot = {ell_0}")
-    print(f" - number of simulations = {nsims}")
+    print(f" - number of simulations = {len(sim_ids)}")
 
     print("-------------------")
     print("building foregrounds C_ells from fitted parameters")
@@ -151,12 +153,20 @@ def cov_sims(args):
                 hp.write_cl(cmb_fname, cl_cmb, overwrite=True)
 
     # Initialize MPI
-    mu.init(config['mpi_bool'])
+    rank, size, comm = mu.init(True)
+
+    # Initialize tasks for MPI sharing
+    mpi_shared_list = sim_ids
+
+    # Every rank must have the same shared list
+    mpi_shared_list = comm.bcast(mpi_shared_list, root=0)
+    task_ids = mu.distribute_tasks(size, rank, len(mpi_shared_list))
+    local_mpi_list = [mpi_shared_list[i] for i in task_ids]
 
     # Generate alm drawing Gaussian random numbers from power spectra
-    print("-------------------")
-    print("Generating simulations")
-    for seed in mu.taskrange(nsims - 1):
+    mu.print_rnk0("-------------------", rank)
+    mu.print_rnk0("Generating simulations", rank)
+    for seed in local_mpi_list:
         print(f"{seed:04d}")
         sims_dir = f"{out_dir}/sims/{seed:04d}"
         if not read_alm:
@@ -171,12 +181,12 @@ def cov_sims(args):
         for nu in freqs:
             if store_maps and read_alm:
                 if smooth:
-                    fnames_alm = [f"{sims_dir}/alm_{fgs_model}_{nu:03d}GHz_SATp1_lmax{lmax}_{seed:04d}.fits",  # noqa
-                                  f"{sims_dir}/alm_{fgs_model}_{nu:03d}GHz_SATp3_lmax{lmax}_{seed:04d}.fits"]  # noqa
+                    fnames_alm = [f"{sims_dir}/alm_{fgs_model}_f{nu:03d}_SATp1_lmax{lmax}_{seed:04d}.fits",  # noqa
+                                  f"{sims_dir}/alm_{fgs_model}_f{nu:03d}_SATp3_lmax{lmax}_{seed:04d}.fits"]  # noqa
                     alm_satp1 = hp.read_alm(fnames_alm[0], hdu=(1, 2, 3))
                     alm_satp3 = hp.read_alm(fnames_alm[1], hdu=(1, 2, 3))
                 else:
-                    fname_alm = f"{sims_dir}/alm_{fgs_model}_{nu:03d}GHz_lmax{lmax}_{seed:04d}.fits"  # noqa
+                    fname_alm = f"{sims_dir}/alm_{fgs_model}_f{nu:03d}_lmax{lmax}_{seed:04d}.fits"  # noqa
                     alm = hp.read_alm(fname_alm, hdu=(1, 2, 3))
             else:
                 # rescale for component SEDs and coadd
@@ -205,12 +215,12 @@ def cov_sims(args):
                         # write alm to disk (smoothed)
                         for alm_beam, sat in zip([alm_satp1, alm_satp3],
                                                  ['SATp1', 'SATp3']):
-                            fname_out = f"{sims_dir}/alm_{fgs_model}_{nu:03d}GHz_{sat}_lmax{lmax}_{seed:04d}.fits"  # noqa
+                            fname_out = f"{sims_dir}/alm_{fgs_model}_f{nu:03d}_{sat}_lmax{lmax}_{seed:04d}.fits"  # noqa
                             hp.write_alm(fname_out, alm_beam,
                                          overwrite=True, out_dtype=np.float64)
                     else:
                         # write alm to disk (no beam smoothing)
-                        fname_out = f"{sims_dir}/alm_{fgs_model}_{nu:03d}GHz_lmax{lmax}_{seed:04d}.fits"  # noqa
+                        fname_out = f"{sims_dir}/alm_{fgs_model}_f{nu:03d}_lmax{lmax}_{seed:04d}.fits"  # noqa
                         hp.write_alm(fname_out, alm, overwrite=True,
                                      out_dtype=np.float64)
 
@@ -220,12 +230,12 @@ def cov_sims(args):
                     if smooth:
                         for alm_beam, sat in zip([alm_satp1, alm_satp3], ['SATp1', 'SATp3']):  # noqa
                             maps_beam = hp.alm2map(alm_beam, nside=nside)
-                            fname_out = f"{sims_dir}/maps_hp_{fgs_model}_{nu:03d}GHz_{sat}_nside{nside}_{seed:04d}.fits"  # noqa
+                            fname_out = f"{sims_dir}/maps_hp_{fgs_model}_f{nu:03d}_{sat}_nside{nside}_{seed:04d}.fits"  # noqa
                             hp.write_map(fname_out, maps_beam,
                                          dtype=np.float64, overwrite=True)
                     else:
                         maps = hp.alm2map(alm, nside=nside)
-                        fname_out = f"{sims_dir}/maps_hp_{fgs_model}_{nu:03d}GHz_nside{nside}_{seed:04d}.fits"  # noqa
+                        fname_out = f"{sims_dir}/maps_hp_{fgs_model}_f{nu:03d}_nside{nside}_{seed:04d}.fits"  # noqa
                         hp.write_map(fname_out, maps, dtype=np.float64,
                                      overwrite=True)
 
@@ -235,17 +245,17 @@ def cov_sims(args):
                                                  ['SATp1', 'SATp3']):
                             maps_beam = enmap.zeros((3,) + shape, wcs)
                             curvedsky.alm2map(alm_beam, maps_beam)
-                            fname_out = f"{sims_dir}/maps_car_{fgs_model}_{nu:03d}GHz_{sat}_{res}arcmin_{seed:04d}.fits"  # noqa
+                            fname_out = f"{sims_dir}/maps_car_{fgs_model}_f{nu:03d}_{sat}_{res}arcmin_{seed:04d}.fits"  # noqa
                             enmap.write_map(fname_out, maps_beam)
                     else:
                         maps = enmap.zeros((3,) + shape, wcs)
                         curvedsky.alm2map(alm, maps)
-                        fname_out = f"{sims_dir}/maps_car_{fgs_model}_{nu:03d}GHz_{res}arcmin_{seed:04d}.fits"  # noqa
+                        fname_out = f"{sims_dir}/maps_car_{fgs_model}_f{nu:03d}_{res}arcmin_{seed:04d}.fits"  # noqa
                         enmap.write_map(fname_out, maps)
 
     if args.plots:
-        print("-------------------")
-        print("plotting")
+        mu.print_rnk0("-------------------", rank)
+        mu.print_rnk0("plotting", rank)
         if pix_type == 'hp':
             if smooth:
                 alm = alm_beam
@@ -260,9 +270,9 @@ def cov_sims(args):
                 units = r'$\mu \mathrm{K_{CMB}}$'
                 if smooth:
                     maps = maps_beam
-                    fname_out = f"{plots_dir}/sim_maps_hp_{nu:03d}GHz_{sat}_nside{nside}_{seed:04d}.png"  # noqa
+                    fname_out = f"{plots_dir}/sim_maps_hp_f{nu:03d}_{sat}_nside{nside}_{seed:04d}.png"  # noqa
                 else:
-                    fname_out = f"{plots_dir}/sim_maps_hp_{nu:03d}GHz_nside{nside}_{seed:04d}.png"  # noqa
+                    fname_out = f"{plots_dir}/sim_maps_hp_f{nu:03d}_nside{nside}_{seed:04d}.png"  # noqa
                 hp.projview(maps[1], cmap=cm.coolwarm, unit=units,
                             llabel=f"{nu} GHz", rlabel="Q")
                 plt.savefig(fname_out, bbox_inches='tight')
@@ -275,11 +285,11 @@ def cov_sims(args):
                     plot = enplot.plot(maps_beam[s],
                                        downgrade=4 if res < 5 else 2,
                                        colorbar=False, min=-vrange, max=vrange)
-                    enplot.write(f"{plots_dir}/sim_maps_car_{nu:03d}GHz_{sat}_{res}arcmin_{seed:04d}", plot)  # noqa
+                    enplot.write(f"{plots_dir}/sim_maps_car_f{nu:03d}_{sat}_{res}arcmin_{seed:04d}", plot)  # noqa
                 else:
                     plot = enplot.plot(maps[s], downgrade=4 if res < 5 else 2,
                                        colorbar=False, min=-vrange, max=vrange)
-                    enplot.write(f"{plots_dir}/sim_maps_car_{nu:03d}GHz_{res}arcmin_{seed:04d}", plot)  # noqa
+                    enplot.write(f"{plots_dir}/sim_maps_car_f{nu:03d}_{res}arcmin_{seed:04d}", plot)  # noqa
 
 
 if __name__ == "__main__":
